@@ -1,20 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  ActivityIndicator,
-  Image,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useColorScheme } from 'react-native';
-import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import { router } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useColorScheme,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import AILoadingModal from '../components/AILoadingModal';
 import { analyzeCivicIssue, generateIssueDescription, testGeminiConnection } from '../lib/gemini';
 import { IssueCategory } from '../types';
 
@@ -22,6 +23,7 @@ export default function ReportScreen() {
   const colorScheme = useColorScheme();
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('AI is analyzing...');
   const [images, setImages] = useState<string[]>([]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -43,7 +45,7 @@ export default function ReportScreen() {
     testGeminiConnection().then(isWorking => {
       if (!isWorking) {
         Alert.alert(
-          'AI Service Warning', 
+          'AI Service Warning',
           'Gemini AI service may not be available. Image analysis might not work properly.'
         );
       }
@@ -97,10 +99,16 @@ export default function ReportScreen() {
       if (!result.canceled && result.assets[0]) {
         const newImages = [...images, result.assets[0].uri];
         setImages(newImages);
-        
-        // Analyze the first image with AI
+
+        // Show loading immediately when image is selected
         if (newImages.length === 1) {
-          analyzeImage(result.assets[0].uri);
+          setLoadingMessage('🔍 Preparing image for AI analysis...');
+          setIsAnalyzing(true);
+
+          // Small delay to ensure loading screen appears before heavy processing
+          setTimeout(() => {
+            analyzeImage(result.assets[0].uri);
+          }, 100);
         }
       }
     } catch (error) {
@@ -120,10 +128,16 @@ export default function ReportScreen() {
       if (!result.canceled && result.assets[0]) {
         const newImages = [...images, result.assets[0].uri];
         setImages(newImages);
-        
-        // Analyze the first image with AI
+
+        // Show loading immediately when photo is taken
         if (newImages.length === 1) {
-          analyzeImage(result.assets[0].uri);
+          setLoadingMessage('📸 Processing captured image...');
+          setIsAnalyzing(true);
+
+          // Small delay to ensure loading screen appears
+          setTimeout(() => {
+            analyzeImage(result.assets[0].uri);
+          }, 100);
         }
       }
     } catch (error) {
@@ -133,34 +147,45 @@ export default function ReportScreen() {
   };
 
   const analyzeImage = async (imageUri: string) => {
-    setIsAnalyzing(true);
+    // Loading is already started by the calling function
+    setLoadingMessage('🔍 Converting image for AI analysis...');
+
     try {
       // Convert image to base64
       const response = await fetch(imageUri);
       const blob = await response.blob();
-      
+
       return new Promise<void>((resolve, reject) => {
         const reader = new FileReader();
-        
+
         reader.onload = async () => {
           try {
             const base64 = reader.result as string;
             const base64Data = base64.split(',')[1];
-            
+
             if (!base64Data) {
               throw new Error('Failed to convert image to base64');
             }
-            
+
+            setLoadingMessage('🤖 AI is analyzing your civic issue...');
             console.log('Sending image to Gemini for analysis...');
-            const analysis = await analyzeCivicIssue(base64Data);
-            
+            const analysis = await analyzeCivicIssue(base64Data, (message, attempt, maxAttempts) => {
+              setLoadingMessage(message);
+            });
+
+            // Keep loading visible while processing results
+            setLoadingMessage('✨ Processing AI analysis results...');
+
             if (analysis.confidence > 30) {
               setCategory(analysis.category as IssueCategory);
               setDescription(analysis.description);
               setUrgency(analysis.urgency);
               setTitle(`Issue: ${analysis.category}`);
               setAiConfidence(analysis.confidence);
-              
+
+              // Hide loading before showing alert
+              setIsAnalyzing(false);
+
               Alert.alert(
                 'AI Analysis Complete',
                 `Detected: ${analysis.category}\nConfidence: ${analysis.confidence}%\n\nAI has automatically filled the form based on the image. You can edit the details if needed.`,
@@ -168,6 +193,10 @@ export default function ReportScreen() {
               );
             } else {
               setAiConfidence(analysis.confidence);
+
+              // Hide loading before showing alert
+              setIsAnalyzing(false);
+
               Alert.alert(
                 'AI Analysis',
                 `The image doesn't appear to show a clear civic issue (confidence: ${analysis.confidence}%). Please fill in the details manually.`,
@@ -180,17 +209,17 @@ export default function ReportScreen() {
             reject(error);
           }
         };
-        
+
         reader.onerror = () => {
           reject(new Error('Failed to read image file'));
         };
-        
+
         reader.readAsDataURL(blob);
       });
     } catch (error) {
       console.error('Error analyzing image:', error);
       Alert.alert(
-        'Analysis Error', 
+        'Analysis Error',
         'Failed to analyze image with AI. Please fill in the details manually.'
       );
     } finally {
@@ -200,15 +229,21 @@ export default function ReportScreen() {
 
   const analyzeText = async (userText: string) => {
     if (!userText.trim()) return;
-    
+
+    setLoadingMessage('📝 AI is analyzing your description...');
     setIsAnalyzing(true);
     try {
-      const analysis = await generateIssueDescription(userText);
+      const analysis = await generateIssueDescription(userText, (message, attempt, maxAttempts) => {
+        setLoadingMessage(message);
+      });
       setCategory(analysis.category as IssueCategory);
       setDescription(analysis.description);
       setUrgency(analysis.urgency);
       setTitle(`Issue: ${analysis.category}`);
-      
+
+      // Hide loading before showing alert
+      setIsAnalyzing(false);
+
       Alert.alert(
         'AI Analysis Complete',
         `Based on your description, AI suggests:\nCategory: ${analysis.category}\nUrgency: ${analysis.urgency}\n\nAI has updated the form. You can edit if needed.`,
@@ -254,7 +289,7 @@ export default function ReportScreen() {
         isAnonymous,
         aiConfidence,
       });
-      
+
       Alert.alert(
         'Success',
         'Issue reported successfully! Our AI will help route this to the appropriate department.',
@@ -302,17 +337,17 @@ export default function ReportScreen() {
               borderLeftWidth: 4,
               borderLeftColor: aiConfidence > 50 ? '#10b981' : '#f59e0b',
             }}>
-              <Text style={{ 
-                fontSize: 14, 
-                fontWeight: '600', 
+              <Text style={{
+                fontSize: 14,
+                fontWeight: '600',
                 color: isDark ? '#ffffff' : '#111827',
-                marginBottom: 4 
+                marginBottom: 4
               }}>
                 🤖 AI Analysis
               </Text>
-              <Text style={{ 
-                fontSize: 12, 
-                color: isDark ? '#9ca3af' : '#6b7280' 
+              <Text style={{
+                fontSize: 12,
+                color: isDark ? '#9ca3af' : '#6b7280'
               }}>
                 Confidence: {aiConfidence}% • Form auto-filled by AI
               </Text>
@@ -321,15 +356,15 @@ export default function ReportScreen() {
 
           {/* Image Capture */}
           <View style={{ marginBottom: 20 }}>
-            <Text style={{ 
-              fontSize: 16, 
-              fontWeight: '600', 
+            <Text style={{
+              fontSize: 16,
+              fontWeight: '600',
               color: isDark ? '#ffffff' : '#111827',
-              marginBottom: 12 
+              marginBottom: 12
             }}>
               📸 Photos (AI will analyze automatically)
             </Text>
-            
+
             <View style={{ flexDirection: 'row', marginBottom: 12 }}>
               <TouchableOpacity
                 onPress={pickImage}
@@ -348,7 +383,7 @@ export default function ReportScreen() {
                   Gallery
                 </Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 onPress={takePhoto}
                 style={{
@@ -366,26 +401,6 @@ export default function ReportScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
-
-            {isAnalyzing && (
-              <View style={{ 
-                flexDirection: 'row', 
-                alignItems: 'center', 
-                backgroundColor: isDark ? '#1f2937' : '#ffffff',
-                padding: 12,
-                borderRadius: 8,
-                marginBottom: 12,
-              }}>
-                <ActivityIndicator size="small" color={isDark ? '#60a5fa' : '#3b82f6'} />
-                <Text style={{ 
-                  marginLeft: 8, 
-                  fontSize: 14, 
-                  color: isDark ? '#9ca3af' : '#6b7280' 
-                }}>
-                  🤖 AI is analyzing your image...
-                </Text>
-              </View>
-            )}
 
             {images.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -416,11 +431,11 @@ export default function ReportScreen() {
 
           {/* Title */}
           <View style={{ marginBottom: 20 }}>
-            <Text style={{ 
-              fontSize: 16, 
-              fontWeight: '600', 
+            <Text style={{
+              fontSize: 16,
+              fontWeight: '600',
               color: isDark ? '#ffffff' : '#111827',
-              marginBottom: 8 
+              marginBottom: 8
             }}>
               Title *
             </Text>
@@ -443,11 +458,11 @@ export default function ReportScreen() {
 
           {/* Description */}
           <View style={{ marginBottom: 20 }}>
-            <Text style={{ 
-              fontSize: 16, 
-              fontWeight: '600', 
+            <Text style={{
+              fontSize: 16,
+              fontWeight: '600',
               color: isDark ? '#ffffff' : '#111827',
-              marginBottom: 8 
+              marginBottom: 8
             }}>
               Description *
             </Text>
@@ -489,11 +504,11 @@ export default function ReportScreen() {
 
           {/* Category */}
           <View style={{ marginBottom: 20 }}>
-            <Text style={{ 
-              fontSize: 16, 
-              fontWeight: '600', 
+            <Text style={{
+              fontSize: 16,
+              fontWeight: '600',
               color: isDark ? '#ffffff' : '#111827',
-              marginBottom: 8 
+              marginBottom: 8
             }}>
               Category
             </Text>
@@ -512,7 +527,7 @@ export default function ReportScreen() {
                     borderColor: isDark ? '#374151' : '#e5e7eb',
                   }}
                 >
-                  <Text style={{ 
+                  <Text style={{
                     color: category === cat ? '#ffffff' : (isDark ? '#9ca3af' : '#6b7280'),
                     fontSize: 14,
                     fontWeight: '500',
@@ -526,11 +541,11 @@ export default function ReportScreen() {
 
           {/* Urgency */}
           <View style={{ marginBottom: 20 }}>
-            <Text style={{ 
-              fontSize: 16, 
-              fontWeight: '600', 
+            <Text style={{
+              fontSize: 16,
+              fontWeight: '600',
               color: isDark ? '#ffffff' : '#111827',
-              marginBottom: 8 
+              marginBottom: 8
             }}>
               Urgency
             </Text>
@@ -550,7 +565,7 @@ export default function ReportScreen() {
                     borderColor: isDark ? '#374151' : '#e5e7eb',
                   }}
                 >
-                  <Text style={{ 
+                  <Text style={{
                     color: urgency === level ? '#ffffff' : (isDark ? '#9ca3af' : '#6b7280'),
                     fontSize: 14,
                     fontWeight: '500',
@@ -565,11 +580,11 @@ export default function ReportScreen() {
 
           {/* Location */}
           <View style={{ marginBottom: 20 }}>
-            <Text style={{ 
-              fontSize: 16, 
-              fontWeight: '600', 
+            <Text style={{
+              fontSize: 16,
+              fontWeight: '600',
               color: isDark ? '#ffffff' : '#111827',
-              marginBottom: 8 
+              marginBottom: 8
             }}>
               📍 Location
             </Text>
@@ -582,24 +597,24 @@ export default function ReportScreen() {
             }}>
               {location ? (
                 <View>
-                  <Text style={{ 
-                    fontSize: 14, 
+                  <Text style={{
+                    fontSize: 14,
                     color: isDark ? '#9ca3af' : '#6b7280',
-                    marginBottom: 4 
+                    marginBottom: 4
                   }}>
                     {location.address || 'Current Location'}
                   </Text>
-                  <Text style={{ 
-                    fontSize: 12, 
-                    color: isDark ? '#6b7280' : '#9ca3af' 
+                  <Text style={{
+                    fontSize: 12,
+                    color: isDark ? '#6b7280' : '#9ca3af'
                   }}>
                     {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
                   </Text>
                 </View>
               ) : (
-                <Text style={{ 
-                  fontSize: 14, 
-                  color: isDark ? '#6b7280' : '#9ca3af' 
+                <Text style={{
+                  fontSize: 14,
+                  color: isDark ? '#6b7280' : '#9ca3af'
                 }}>
                   Getting location...
                 </Text>
@@ -629,6 +644,16 @@ export default function ReportScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* AI Loading Modal */}
+      <AILoadingModal
+        visible={isAnalyzing}
+        message={loadingMessage}
+        onRequestClose={() => {
+          // Allow users to close if they want, but keep isAnalyzing true
+          // until the actual analysis is complete
+        }}
+      />
     </SafeAreaView>
   );
 } 
