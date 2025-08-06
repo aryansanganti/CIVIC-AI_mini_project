@@ -52,13 +52,13 @@ You need to obtain the following API keys to fully enable all features:
 Update `lib/firebase.ts` with your config:
 ```typescript
 const firebaseConfig = {
-  apiKey: "AIzaSyC...", // Your actual API key
+  apiKey: "YOUR_FIREBASE_API_KEY",
   authDomain: "your-project.firebaseapp.com",
   projectId: "your-project-id",
   storageBucket: "your-project.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abcdef123456"
-};
+  messagingSenderId: "your-messaging-sender-id",
+  appId: "your-app-id"
+}
 ```
 
 ---

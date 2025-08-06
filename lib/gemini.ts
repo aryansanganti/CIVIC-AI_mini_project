@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'AIzaSyBP1h0PWehBjXh6yfA5VqJam5dKVNp-dL0');
+const genAI = new GoogleGenerativeAI(process.env.EXPO_PUBLIC_GEMINI_API_KEY || '');
 
 // Get the generative model for text
 export const textModel = genAI.getGenerativeModel({ model: 'gemini-pro' });
@@ -45,13 +45,13 @@ export async function analyzeCivicIssue(imageBase64: string): Promise<{
     const result = await visionModel.generateContent([prompt, imagePart]);
     const response = await result.response;
     const text = response.text();
-    
+
     // Extract JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       return JSON.parse(jsonMatch[0]);
     }
-    
+
     throw new Error('Invalid response format');
   } catch (error) {
     console.error('Error analyzing image:', error);
@@ -90,13 +90,13 @@ export async function generateIssueDescription(userText: string): Promise<{
     const result = await textModel.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
-    
+
     // Extract JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       return JSON.parse(jsonMatch[0]);
     }
-    
+
     throw new Error('Invalid response format');
   } catch (error) {
     console.error('Error generating description:', error);

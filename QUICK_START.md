@@ -46,12 +46,12 @@ Your Civic AI platform is now fully set up with:
 **Update `lib/firebase.ts`:**
 ```typescript
 const firebaseConfig = {
-  apiKey: "AIzaSyC...your_actual_firebase_api_key",
+  apiKey: "YOUR_FIREBASE_API_KEY",
   authDomain: "your-project.firebaseapp.com",
   projectId: "your-project-id",
   storageBucket: "your-project.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abcdef123456"
+  messagingSenderId: "your-messaging-sender-id",
+  appId: "your-app-id"
 };
 ```
 
