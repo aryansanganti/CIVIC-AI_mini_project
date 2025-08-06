@@ -15,7 +15,7 @@ import { useColorScheme } from 'react-native';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { analyzeCivicIssue, generateIssueDescription } from '../lib/gemini';
+import { analyzeCivicIssue, generateIssueDescription, testGeminiConnection } from '../lib/gemini';
 import { IssueCategory } from '../types';
 
 export default function ReportScreen() {
@@ -39,6 +39,15 @@ export default function ReportScreen() {
 
   useEffect(() => {
     getCurrentLocation();
+    // Test Gemini connection
+    testGeminiConnection().then(isWorking => {
+      if (!isWorking) {
+        Alert.alert(
+          'AI Service Warning', 
+          'Gemini AI service may not be available. Image analysis might not work properly.'
+        );
+      }
+    });
   }, []);
 
   const getCurrentLocation = async () => {
@@ -129,40 +138,61 @@ export default function ReportScreen() {
       // Convert image to base64
       const response = await fetch(imageUri);
       const blob = await response.blob();
-      const reader = new FileReader();
       
-      reader.onload = async () => {
-        const base64 = reader.result as string;
-        const base64Data = base64.split(',')[1];
+      return new Promise<void>((resolve, reject) => {
+        const reader = new FileReader();
         
-        const analysis = await analyzeCivicIssue(base64Data);
+        reader.onload = async () => {
+          try {
+            const base64 = reader.result as string;
+            const base64Data = base64.split(',')[1];
+            
+            if (!base64Data) {
+              throw new Error('Failed to convert image to base64');
+            }
+            
+            console.log('Sending image to Gemini for analysis...');
+            const analysis = await analyzeCivicIssue(base64Data);
+            
+            if (analysis.confidence > 30) {
+              setCategory(analysis.category as IssueCategory);
+              setDescription(analysis.description);
+              setUrgency(analysis.urgency);
+              setTitle(`Issue: ${analysis.category}`);
+              setAiConfidence(analysis.confidence);
+              
+              Alert.alert(
+                'AI Analysis Complete',
+                `Detected: ${analysis.category}\nConfidence: ${analysis.confidence}%\n\nAI has automatically filled the form based on the image. You can edit the details if needed.`,
+                [{ text: 'OK' }]
+              );
+            } else {
+              setAiConfidence(analysis.confidence);
+              Alert.alert(
+                'AI Analysis',
+                `The image doesn't appear to show a clear civic issue (confidence: ${analysis.confidence}%). Please fill in the details manually.`,
+                [{ text: 'OK' }]
+              );
+            }
+            resolve();
+          } catch (error) {
+            console.error('Error in image analysis:', error);
+            reject(error);
+          }
+        };
         
-        if (analysis.confidence > 30) {
-          setCategory(analysis.category as IssueCategory);
-          setDescription(analysis.description);
-          setUrgency(analysis.urgency);
-          setTitle(`Issue: ${analysis.category}`);
-          setAiConfidence(analysis.confidence);
-          
-          Alert.alert(
-            'AI Analysis Complete',
-            `Detected: ${analysis.category}\nConfidence: ${analysis.confidence}%\n\nAI has automatically filled the form based on the image. You can edit the details if needed.`,
-            [{ text: 'OK' }]
-          );
-        } else {
-          setAiConfidence(analysis.confidence);
-          Alert.alert(
-            'AI Analysis',
-            'The image doesn\'t appear to show a clear civic issue. Please fill in the details manually.',
-            [{ text: 'OK' }]
-          );
-        }
-      };
-      
-      reader.readAsDataURL(blob);
+        reader.onerror = () => {
+          reject(new Error('Failed to read image file'));
+        };
+        
+        reader.readAsDataURL(blob);
+      });
     } catch (error) {
       console.error('Error analyzing image:', error);
-      Alert.alert('Error', 'Failed to analyze image with AI');
+      Alert.alert(
+        'Analysis Error', 
+        'Failed to analyze image with AI. Please fill in the details manually.'
+      );
     } finally {
       setIsAnalyzing(false);
     }

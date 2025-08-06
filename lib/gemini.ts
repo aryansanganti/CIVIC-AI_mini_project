@@ -1,15 +1,29 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.EXPO_PUBLIC_GEMINI_API_KEY || '');
+const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+if (!apiKey) {
+  throw new Error('Gemini API key is not defined in environment variables.');
+}
+const genAI = new GoogleGenerativeAI(apiKey);
 
-// Get the generative model for text
-export const textModel = genAI.getGenerativeModel({ model: 'gemini-pro' });
+export const textModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-// Get the generative model for vision (image analysis)
-export const visionModel = genAI.getGenerativeModel({ model: 'gemini-pro-vision' });
+export const visionModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-// Function to analyze civic issues from images
+// Test function to verify API key is working
+export async function testGeminiConnection(): Promise<boolean> {
+  try {
+    const result = await textModel.generateContent('Say "API working" if you can read this.');
+    const response = await result.response;
+    const text = response.text();
+    console.log('Gemini test response:', text);
+    return text.toLowerCase().includes('api working');
+  } catch (error) {
+    console.error('Gemini connection test failed:', error);
+    return false;
+  }
+}
+
 export async function analyzeCivicIssue(imageBase64: string): Promise<{
   category: string;
   description: string;
@@ -46,10 +60,20 @@ export async function analyzeCivicIssue(imageBase64: string): Promise<{
     const response = await result.response;
     const text = response.text();
 
-    // Extract JSON from response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    console.log('Gemini response:', text); // For debugging
+
+    // Clean the response text and extract JSON
+    const cleanedText = text.replace(/```json\n?|\n?```/g, '').trim();
+    const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+    
     if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+      const parsedResult = JSON.parse(jsonMatch[0]);
+      return {
+        category: parsedResult.category || 'Other',
+        description: parsedResult.description || 'Unable to analyze image',
+        urgency: parsedResult.urgency || 'medium',
+        confidence: typeof parsedResult.confidence === 'number' ? parsedResult.confidence : 0
+      };
     }
 
     throw new Error('Invalid response format');
@@ -57,7 +81,7 @@ export async function analyzeCivicIssue(imageBase64: string): Promise<{
     console.error('Error analyzing image:', error);
     return {
       category: 'Other',
-      description: 'Unable to analyze image',
+      description: 'Unable to analyze image - please try again',
       urgency: 'medium',
       confidence: 0
     };
@@ -91,10 +115,19 @@ export async function generateIssueDescription(userText: string): Promise<{
     const response = await result.response;
     const text = response.text();
 
-    // Extract JSON from response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    console.log('Gemini text response:', text); // For debugging
+
+    // Clean the response text and extract JSON
+    const cleanedText = text.replace(/```json\n?|\n?```/g, '').trim();
+    const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+    
     if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+      const parsedResult = JSON.parse(jsonMatch[0]);
+      return {
+        category: parsedResult.category || 'Other',
+        description: parsedResult.description || userText,
+        urgency: parsedResult.urgency || 'medium'
+      };
     }
 
     throw new Error('Invalid response format');
