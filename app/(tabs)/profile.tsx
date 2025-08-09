@@ -1,5 +1,8 @@
+import { Session, supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import { Alert, Image, ScrollView, Switch, Text, TouchableOpacity, useColorScheme, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -11,21 +14,48 @@ interface User {
 
 export default function ProfileScreen() {
   const colorScheme = useColorScheme();
+  const router = useRouter();
   const [isDarkMode, setIsDarkMode] = useState(colorScheme === 'dark');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [locationEnabled, setLocationEnabled] = useState(true);
-  const [user] = useState<User | null>(null); // For now, always null since we removed auth
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading] = useState(false);
 
   const isDark = colorScheme === 'dark';
 
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ? {
+        displayName: session.user.user_metadata?.full_name ?? null,
+        email: session.user.email ?? null,
+        photoURL: session.user.user_metadata?.avatar_url ?? null,
+      } : null);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => {
+      setSession(s);
+      setUser(s?.user ? {
+        displayName: s.user.user_metadata?.full_name ?? null,
+        email: s.user.email ?? null,
+        photoURL: s.user.user_metadata?.avatar_url ?? null,
+      } : null);
+    });
+    return () => { sub.subscription.unsubscribe(); };
+  }, []);
+
   const handleSignIn = () => {
-    // Since we removed auth, this will be implemented later
-    Alert.alert('Sign In', 'Sign in functionality will be implemented later');
+    router.push('/(auth)/sign-in');
   };
 
-  const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Sign out functionality will be implemented later');
+  const handleSignOut = async () => {
+    try {
+      await AsyncStorage.removeItem('guest');
+      await supabase.auth.signOut(); // Supabase automatically clears session from SecureStore
+      console.log('📱 User signed out and session cleared');
+    } catch (error) {
+      console.error('📱 Error during sign out:', error);
+    }
   };
 
   const menuItems = [

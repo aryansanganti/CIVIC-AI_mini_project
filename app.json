@@ -23,7 +23,7 @@
       }
     },
     "android": {
-      "package": "com.example",
+      "package": "com.civicai.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
