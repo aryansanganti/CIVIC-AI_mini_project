@@ -16,46 +16,66 @@ export interface User {
 
 export interface CivicIssue {
   id: string;
+  reporter_id: string | null; // User ID or null for anonymous
   title: string;
   description: string;
   category: IssueCategory;
-  urgency: 'low' | 'medium' | 'high';
+  priority: 'Low' | 'Medium' | 'High'; // Updated to match PRD
   status: IssueStatus;
-  location: {
-    latitude: number;
-    longitude: number;
-    address?: string;
-  };
-  images: string[]; // URLs to stored images
-  audioUrl?: string; // URL to stored audio
-  reportedBy: string; // User ID or 'anonymous'
+  latitude: number;
+  longitude: number;
+  address: string;
+  image_urls: string[]; // Array of image URLs from Supabase Storage
+  is_anonymous: boolean; // Whether the report is anonymous
   assignedTo?: string; // Officer ID
-  createdAt: Date;
-  updatedAt: Date;
+  created_at: Date;
+  updated_at: Date;
   resolvedAt?: Date;
-  upvotes: number;
-  comments: Comment[];
+  upvotes?: number;
+  comments?: Comment[];
   aiConfidence?: number; // AI detection confidence score
-  tags: string[];
+  tags?: string[];
 }
 
-export type IssueCategory = 
-  | 'Road Damage'
-  | 'Street Light'
-  | 'Garbage'
-  | 'Water Leak'
-  | 'Traffic Signal'
-  | 'Pothole'
-  | 'Street Sign'
-  | 'Other';
+// Updated categories to match PRD specification
+export type IssueCategory =
+  | 'Roads'
+  | 'Sanitation'
+  | 'Electricity'
+  | 'Water Supply'
+  | 'Public Safety'
+  | 'Others';
 
-export type IssueStatus = 
-  | 'reported'
-  | 'assigned'
-  | 'in_progress'
-  | 'resolved'
-  | 'closed'
-  | 'escalated';
+// Updated to match PRD specification
+export type IssueStatus =
+  | 'Pending'
+  | 'In Progress'
+  | 'Resolved';
+
+// Database-specific type for insert operations
+export interface IssueInsert {
+  reporter_id: string | null; // Can be null for anonymous reports
+  title: string;
+  description: string;
+  category: IssueCategory;
+  priority: 'Low' | 'Medium' | 'High';
+  latitude: number;
+  longitude: number;
+  address: string;
+  image_urls?: string[];
+  is_anonymous?: boolean;
+  status?: IssueStatus;
+}
+
+// Database-specific type for update operations
+export interface IssueUpdate {
+  title?: string;
+  description?: string;
+  category?: IssueCategory;
+  priority?: 'Low' | 'Medium' | 'High';
+  status?: IssueStatus;
+  updated_at?: string;
+}
 
 export interface Comment {
   id: string;

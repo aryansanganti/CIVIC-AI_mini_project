@@ -36,7 +36,7 @@ class SimpleSecureStore {
                 return null;
             }
             const cleanKey = this.cleanKey(key);
-            console.log(`🔑 SecureStore.getItem: "${key}" -> "${cleanKey}"`);
+            // console.log(`🔑 SecureStore.getItem: "${key}" -> "${cleanKey}"`);
             const item = await SecureStore.getItemAsync(cleanKey);
             return item;
         } catch (error) {

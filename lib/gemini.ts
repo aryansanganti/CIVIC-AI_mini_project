@@ -6,9 +6,9 @@ if (!apiKey) {
 }
 const genAI = new GoogleGenerativeAI(apiKey);
 
-export const textModel = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
+export const textModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-export const visionModel = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
+export const visionModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
 // Rate limiting configuration
 let lastRequestTime = 0;

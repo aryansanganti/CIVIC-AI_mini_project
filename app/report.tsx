@@ -15,8 +15,11 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import uuid from 'react-native-uuid';
 import AILoadingModal from '../components/AILoadingModal';
 import { analyzeCivicIssue, generateIssueDescription, testGeminiConnection } from '../lib/gemini';
+import { supabase } from '../lib/supabase';
+import SupabaseService from '../lib/supabase-service';
 import { IssueCategory } from '../types';
 
 export default function ReportScreen() {
@@ -27,15 +30,15 @@ export default function ReportScreen() {
   const [images, setImages] = useState<string[]>([]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState<IssueCategory>('Other');
-  const [urgency, setUrgency] = useState<'low' | 'medium' | 'high'>('medium');
+  const [category, setCategory] = useState<IssueCategory>('Others');
+  const [priority, setPriority] = useState<'Low' | 'Medium' | 'High'>('Medium');
   const [location, setLocation] = useState<{
     latitude: number;
     longitude: number;
     address?: string;
   } | null>(null);
-  const [isAnonymous, setIsAnonymous] = useState(false);
   const [aiConfidence, setAiConfidence] = useState<number | null>(null);
+  const [isAnonymous, setIsAnonymous] = useState(false);
 
   const isDark = colorScheme === 'dark';
 
@@ -177,10 +180,17 @@ export default function ReportScreen() {
             setLoadingMessage('✨ Processing AI analysis results...');
 
             if (analysis.confidence > 30) {
-              setCategory(analysis.category as IssueCategory);
+              const mappedCategory = mapAICategory(analysis.category);
+              setCategory(mappedCategory);
               setDescription(analysis.description);
-              setUrgency(analysis.urgency);
-              setTitle(`Issue: ${analysis.category}`);
+              // Map urgency to priority format
+              const urgencyToPriority = {
+                'low': 'Low' as const,
+                'medium': 'Medium' as const,
+                'high': 'High' as const
+              };
+              setPriority(urgencyToPriority[analysis.urgency]);
+              setTitle(`Issue: ${mappedCategory}`);
               setAiConfidence(analysis.confidence);
 
               // Hide loading before showing alert
@@ -188,7 +198,7 @@ export default function ReportScreen() {
 
               Alert.alert(
                 'AI Analysis Complete',
-                `Detected: ${analysis.category}\nConfidence: ${analysis.confidence}%\n\nAI has automatically filled the form based on the image. You can edit the details if needed.`,
+                `Detected: ${analysis.category} → ${mappedCategory}\nConfidence: ${analysis.confidence}%\n\nAI has automatically filled the form based on the image. You can edit the details if needed.`,
                 [{ text: 'OK' }]
               );
             } else {
@@ -236,17 +246,24 @@ export default function ReportScreen() {
       const analysis = await generateIssueDescription(userText, (message, attempt, maxAttempts) => {
         setLoadingMessage(message);
       });
-      setCategory(analysis.category as IssueCategory);
+      const mappedCategory = mapAICategory(analysis.category);
+      setCategory(mappedCategory);
       setDescription(analysis.description);
-      setUrgency(analysis.urgency);
-      setTitle(`Issue: ${analysis.category}`);
+      // Map urgency to priority format
+      const urgencyToPriority = {
+        'low': 'Low' as const,
+        'medium': 'Medium' as const,
+        'high': 'High' as const
+      };
+      setPriority(urgencyToPriority[analysis.urgency]);
+      setTitle(`Issue: ${mappedCategory}`);
 
       // Hide loading before showing alert
       setIsAnalyzing(false);
 
       Alert.alert(
         'AI Analysis Complete',
-        `Based on your description, AI suggests:\nCategory: ${analysis.category}\nUrgency: ${analysis.urgency}\n\nAI has updated the form. You can edit if needed.`,
+        `Based on your description, AI suggests:\nCategory: ${analysis.category} → ${mappedCategory}\nUrgency: ${analysis.urgency}\n\nAI has updated the form. You can edit if needed.`,
         [{ text: 'OK' }]
       );
     } catch (error) {
@@ -278,41 +295,153 @@ export default function ReportScreen() {
 
     setIsLoading(true);
     try {
-      // TODO: Submit to Firebase
-      console.log('Submitting issue:', {
-        title,
-        description,
-        category,
-        urgency,
-        location,
-        images,
-        isAnonymous,
-        aiConfidence,
-      });
+      // Create unique issue ID for image uploads
+      const issueId = uuid.v4() as string;
 
-      Alert.alert(
-        'Success',
-        'Issue reported successfully! Our AI will help route this to the appropriate department.',
-        [{ text: 'OK', onPress: () => router.back() }]
-      );
+      // Upload images if any (with error handling)
+      let imageUrls: string[] = [];
+      if (images.length > 0) {
+        try {
+          setLoadingMessage('Uploading images...');
+          imageUrls = await SupabaseService.uploadMultipleImages(images, issueId);
+          console.log('Images uploaded successfully:', imageUrls);
+        } catch (uploadError) {
+          console.error('Error uploading images:', uploadError);
+          // Don't fail the entire submission if image upload fails
+          Alert.alert('Warning', 'Images could not be uploaded, but your report will still be submitted.');
+        }
+      }
+
+      // Create issue data with validated category
+      const validatedCategory = mapAICategory(category);
+      const issueData = {
+        title: title.trim(),
+        description: description.trim(),
+        category: validatedCategory,
+        priority,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        address: location.address || `${location.latitude}, ${location.longitude}`,
+        image_urls: imageUrls,
+        is_anonymous: isAnonymous,
+      };
+
+      console.log('Submitting issue data:', JSON.stringify(issueData, null, 2));
+      console.log('Category being sent:', `"${issueData.category}"`);
+      console.log('Category type:', typeof issueData.category);
+
+      let createdIssue;
+      if (isAnonymous) {
+        // Submit anonymously
+        createdIssue = await SupabaseService.createAnonymousIssue(issueData);
+      } else {
+        // Get current user for authenticated submission
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+        if (userError || !user) {
+          Alert.alert('Error', 'You must be logged in to submit a non-anonymous issue');
+          setIsLoading(false);
+          return;
+        }
+
+        // Submit with user authentication
+        createdIssue = await SupabaseService.createIssue({
+          ...issueData,
+          reporter_id: user.id,
+        });
+      }
+
+      if (createdIssue) {
+        Alert.alert(
+          'Success',
+          isAnonymous
+            ? 'Anonymous issue reported successfully! Our AI has analyzed and categorized your report for quick resolution.'
+            : 'Issue reported successfully! Our AI has analyzed and categorized your report for quick resolution.',
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+
+        // Reset form
+        setTitle('');
+        setDescription('');
+        setCategory('Others');
+        setPriority('Medium');
+        setImages([]);
+        setAiConfidence(null);
+        setIsAnonymous(false);
+      } else {
+        throw new Error('Failed to create issue');
+      }
     } catch (error) {
       console.error('Error submitting issue:', error);
-      Alert.alert('Error', 'Failed to submit issue');
+
+      let errorMessage = 'Please try again.';
+
+      if (error instanceof Error) {
+        const errorStr = error.message;
+        if (errorStr.includes('23514') || errorStr.includes('check constraint')) {
+          errorMessage = 'Invalid category selected. Please choose a different category and try again.';
+        } else if (errorStr.includes('network') || errorStr.includes('Network')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        } else if (errorStr.includes('storage') || errorStr.includes('Storage')) {
+          errorMessage = 'Image upload failed. Your report was submitted but without images.';
+        } else {
+          errorMessage = errorStr;
+        }
+      }
+
+      Alert.alert('Error', `Failed to submit issue: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
   };
 
   const categories: IssueCategory[] = [
-    'Road Damage',
-    'Street Light',
-    'Garbage',
-    'Water Leak',
-    'Traffic Signal',
-    'Pothole',
-    'Street Sign',
-    'Other',
+    'Roads',
+    'Sanitation',
+    'Electricity',
+    'Water Supply',
+    'Public Safety',
+    'Others',
   ];
+
+  // Map AI detected categories to our predefined categories
+  const mapAICategory = (aiCategory: string): IssueCategory => {
+    const categoryMap: Record<string, IssueCategory> = {
+      'Pothole': 'Roads',
+      'Road': 'Roads',
+      'Traffic': 'Roads',
+      'Street': 'Roads',
+      'Garbage': 'Sanitation',
+      'Waste': 'Sanitation',
+      'Sewage': 'Sanitation',
+      'Toilet': 'Sanitation',
+      'Power': 'Electricity',
+      'Electric': 'Electricity',
+      'Lighting': 'Electricity',
+      'Water': 'Water Supply',
+      'Plumbing': 'Water Supply',
+      'Safety': 'Public Safety',
+      'Crime': 'Public Safety',
+      'Security': 'Public Safety',
+    };
+
+    // Check if we have a direct mapping
+    const mapped = categoryMap[aiCategory];
+    if (mapped) {
+      return mapped;
+    }
+
+    // Check if any of our valid categories are contained in the AI category
+    const validCategories: IssueCategory[] = ['Roads', 'Sanitation', 'Electricity', 'Water Supply', 'Public Safety', 'Others'];
+    for (const category of validCategories) {
+      if (aiCategory.toLowerCase().includes(category.toLowerCase())) {
+        return category;
+      }
+    }
+
+    // Default to Others if no mapping found
+    return 'Others';
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#111827' : '#f9fafb' }}>
@@ -326,6 +455,76 @@ export default function ReportScreen() {
               Report Issue
             </Text>
           </View>
+
+          {/* Anonymous Toggle */}
+          <TouchableOpacity
+            onPress={() => setIsAnonymous(!isAnonymous)}
+            style={{
+              backgroundColor: isAnonymous ? (isDark ? '#059669' : '#10b981') : (isDark ? '#1f2937' : '#ffffff'),
+              borderRadius: 8,
+              padding: 16,
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor: isAnonymous ? (isDark ? '#059669' : '#10b981') : (isDark ? '#374151' : '#e5e7eb'),
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons
+                name={isAnonymous ? "shield-checkmark" : "shield-outline"}
+                size={20}
+                color={isAnonymous ? '#ffffff' : (isDark ? '#9ca3af' : '#6b7280')}
+                style={{ marginRight: 8 }}
+              />
+              <Text style={{
+                fontSize: 16,
+                fontWeight: '600',
+                color: isAnonymous ? '#ffffff' : (isDark ? '#ffffff' : '#111827'),
+              }}>
+                Submit Anonymously
+              </Text>
+            </View>
+            <View style={{
+              width: 20,
+              height: 20,
+              borderRadius: 10,
+              backgroundColor: isAnonymous ? '#ffffff' : 'transparent',
+              borderWidth: 2,
+              borderColor: isAnonymous ? '#ffffff' : (isDark ? '#9ca3af' : '#6b7280'),
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              {isAnonymous && (
+                <View style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 5,
+                  backgroundColor: isDark ? '#059669' : '#10b981',
+                }} />
+              )}
+            </View>
+          </TouchableOpacity>
+
+          {isAnonymous && (
+            <View style={{
+              backgroundColor: isDark ? '#1f2937' : '#f3f4f6',
+              borderRadius: 8,
+              padding: 12,
+              marginBottom: 16,
+              borderLeftWidth: 4,
+              borderLeftColor: isDark ? '#059669' : '#10b981',
+            }}>
+              <Text style={{
+                fontSize: 14,
+                color: isDark ? '#9ca3af' : '#6b7280',
+                fontStyle: 'italic',
+              }}>
+                Your report will be submitted without linking it to your account. You won't be able to track the status, but it will still be processed by officials.
+              </Text>
+            </View>
+          )}
 
           {/* AI Status */}
           {aiConfidence !== null && (
@@ -539,7 +738,7 @@ export default function ReportScreen() {
             </ScrollView>
           </View>
 
-          {/* Urgency */}
+          {/* Priority */}
           <View style={{ marginBottom: 20 }}>
             <Text style={{
               fontSize: 16,
@@ -547,16 +746,16 @@ export default function ReportScreen() {
               color: isDark ? '#ffffff' : '#111827',
               marginBottom: 8
             }}>
-              Urgency
+              Priority
             </Text>
             <View style={{ flexDirection: 'row' }}>
-              {(['low', 'medium', 'high'] as const).map((level) => (
+              {(['Low', 'Medium', 'High'] as const).map((level) => (
                 <TouchableOpacity
                   key={level}
-                  onPress={() => setUrgency(level)}
+                  onPress={() => setPriority(level)}
                   style={{
                     flex: 1,
-                    backgroundColor: urgency === level ? (isDark ? '#3b82f6' : '#3b82f6') : (isDark ? '#1f2937' : '#ffffff'),
+                    backgroundColor: priority === level ? (isDark ? '#3b82f6' : '#3b82f6') : (isDark ? '#1f2937' : '#ffffff'),
                     paddingVertical: 12,
                     marginHorizontal: 4,
                     borderRadius: 8,
@@ -566,10 +765,9 @@ export default function ReportScreen() {
                   }}
                 >
                   <Text style={{
-                    color: urgency === level ? '#ffffff' : (isDark ? '#9ca3af' : '#6b7280'),
+                    color: priority === level ? '#ffffff' : (isDark ? '#9ca3af' : '#6b7280'),
                     fontSize: 14,
                     fontWeight: '500',
-                    textTransform: 'capitalize',
                   }}>
                     {level}
                   </Text>
@@ -638,7 +836,7 @@ export default function ReportScreen() {
               <ActivityIndicator color="#ffffff" />
             ) : (
               <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '600' }}>
-                🤖 Submit with AI Analysis
+                {isAnonymous ? '🕶️ Submit Anonymous Report' : '🤖 Submit with AI Analysis'}
               </Text>
             )}
           </TouchableOpacity>
@@ -656,4 +854,4 @@ export default function ReportScreen() {
       />
     </SafeAreaView>
   );
-} 
+}
