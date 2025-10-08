@@ -176,7 +176,7 @@ export default function SignIn() {
     return (
         <View style={[styles.container, { backgroundColor: isDark ? '#111827' : '#f9fafb' }]}>
             {/* Theme Toggle Button */}
-            <TouchableOpacity 
+            {/* <TouchableOpacity 
                 style={[styles.themeToggle, { backgroundColor: isDark ? '#374151' : '#ffffff' }]}
                 onPress={toggleTheme}
             >
@@ -185,7 +185,7 @@ export default function SignIn() {
                     size={24} 
                     color={isDark ? '#fbbf24' : '#6b7280'} 
                 />
-            </TouchableOpacity>
+            </TouchableOpacity> */}
 
             <View style={styles.content}>
                 <Text style={[styles.title, { color: isDark ? '#ffffff' : '#111827' }]}>
@@ -305,15 +305,16 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         paddingHorizontal: 24,
-        paddingTop: 80, // Account for theme toggle
+        paddingTop: 50, // Account for theme toggle
         gap: 24,
     },
     title: {
         fontSize: 28,
         fontWeight: '700',
         textAlign: 'center',
-        marginBottom: 8,
-        lineHeight: 36,
+        marginBottom: 4,
+        marginTop: 14,
+        lineHeight: 26,
     },
     subtitle: {
         fontSize: 16,
@@ -370,7 +371,7 @@ const styles = StyleSheet.create({
     },
     divider: {
         height: 1,
-        marginVertical: 24,
+        marginVertical: 4,
     },
     socialSection: {
         gap: 16,
@@ -396,11 +397,12 @@ const styles = StyleSheet.create({
         fontSize: 16,
     },
     guestButton: {
-        padding: 16,
+        // padding: 10,
+        marginBottom:20,
         borderRadius: 12,
         alignItems: 'center',
         width: '100%',
-        minHeight: 52,
+        minHeight: 50,
     },
     guestButtonText: {
         fontWeight: '600',
