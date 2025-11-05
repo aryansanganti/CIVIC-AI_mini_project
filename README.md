@@ -114,13 +114,7 @@ Civic AI is the **easiest way to report and track civic issues** for **urban cit
 - **Role-based Access**: Citizen and officer roles with appropriate permissions
 - **Modern UI/UX**: Dark/light mode support with beautiful, intuitive interface
 
-### Planned Features
-- **Multi-Language Support**: Full app support for Indian languages
-- **Audio-to-Text**: Voice reporting with multilingual speech recognition
-- **Push Notifications**: Real-time updates on issue status
-- **Community Mode**: Public comments, upvotes, and status tracking
-- **Advanced Analytics**: Heatmaps and insights dashboard
-- **Volunteer Mode**: Community moderation and verification
+
 
 ## 🛠️ Tech Stack
 
@@ -640,87 +634,6 @@ const analysis = await analyzeCivicIssue(imageBase64);
 4. **Impact Metrics**: Charts showing user adoption and issue resolution
 5. **Market Opportunity**: TAM/SAM/SOM breakdown
 6. **Team & Traction**: Credibility and momentum indicators
-
-## 💡 6. Q&A Preparation & Defense Strategy
-
-### Core Understanding Questions
-
-**Q: What problem does this solve and why is it important?**
-> **A:** "Civic AI solves the broken feedback loop between citizens and government. Currently, 70% of civic complaints never get resolved because of inefficient reporting systems, lack of transparency, and poor communication. This matters because unresolved civic issues directly impact quality of life, public safety, and citizen trust in government. With 68% of the world's population expected to live in cities by 2050, we need scalable solutions for urban governance."
-
-**Q: What's unique compared to existing solutions?**
-> **A:** "Three key differentiators: First, AI-powered issue detection that categorizes and prioritizes automatically - existing apps require manual form filling. Second, real-time transparency with live status updates and photo evidence - most government portals are black boxes. Third, gamification and community features that encourage civic engagement - traditional systems are purely transactional. We're the only solution combining AI, transparency, and community engagement in one platform."
-
-**Q: Who is your target user and how do you reach them?**
-> **A:** "Primary users are urban citizens aged 25-45 who use smartphones daily and care about their community. Secondary users are municipal officers who need efficient issue management tools. Our go-to-market strategy: Partner with resident welfare associations (RWAs) for organic growth, collaborate with municipal corporations for official adoption, and leverage social media campaigns around civic pride. We've already validated this with 500+ beta users across Mumbai and Delhi."
-
-### Technical Deep-Dive Questions
-
-**Q: Why did you choose this tech stack?**
-> **A:** "React Native + Expo for 90% code reuse across iOS and Android, crucial for our resource constraints. Supabase over Firebase because we needed PostgreSQL's relational capabilities for complex civic data relationships, plus real-time subscriptions for live updates. Google Gemini AI for image analysis because it's cost-effective and handles Indian urban contexts better than alternatives. This stack gives us rapid development, scalability, and cost efficiency."
-
-**Q: How does your backend handle multiple requests?**
-> **A:** "Supabase provides auto-scaling PostgreSQL with connection pooling. For high-traffic scenarios, we implement: Request queuing for image processing, database indexing on frequently queried fields (location, status, category), and CDN caching for static assets. Our AI processing is asynchronous - users get immediate confirmation while analysis happens in background. We can handle 1000+ concurrent requests with current architecture."
-
-**Q: Explain your database schema/API design.**
-> **A:** "Core entities: Users (citizens/officers), Issues (reports with metadata), Comments (communication thread), and Locations (geographic data). Key relationships: Users can create multiple Issues, Issues belong to specific Locations, Officers are assigned to Issues based on category and location. API follows RESTful principles with real-time subscriptions for live updates. We use Row Level Security (RLS) for data privacy - users only see their own reports and public status updates."
-
-**Q: How would you scale this for 1M users?**
-> **A:** "Horizontal scaling strategy: Database read replicas for query distribution, image storage on CDN with global edge locations, microservices architecture for AI processing, and geographic sharding for location-based queries. We'd implement caching layers (Redis), load balancing, and async job processing. Current architecture supports 100K users; scaling to 1M requires infrastructure investment but no fundamental redesign."
-
-### Product & Business Questions
-
-**Q: How will you make money?**
-> **A:** "Three revenue streams: SaaS subscriptions for municipal corporations ($500-5000/month based on city size), premium features for citizens (advanced analytics, priority support - $2/month), and data insights for urban planning consultants (anonymized civic issue trends). We're starting with freemium model to build user base, then introducing B2G sales. Conservative projections: $100K ARR by year 2 with 10 municipal partnerships."
-
-**Q: What's your go-to-market strategy?**
-> **A:** "Bottom-up adoption: Start with citizen engagement through RWAs and social media, demonstrate value with resolved issues, then approach municipal corporations with proven traction. Top-down validation: Partner with progressive municipal officers who champion digital governance. We're piloting with 3 municipal wards in Mumbai, targeting 50% issue resolution improvement to create case studies for broader adoption."
-
-**Q: Who are your competitors and how are you better?**
-> **A:** "Direct competitors: MyGov (government portal), FixMyStreet (UK-based), SeeClickFix (US-focused). Indirect: Traditional complaint systems, social media reporting. Our advantages: AI-first approach reduces reporting friction, real-time transparency builds trust, community features increase engagement, and India-specific design handles local contexts. We're the only solution combining all three elements specifically for Indian urban challenges."
-
-### Future & Improvement Questions
-
-**Q: What features do you plan to add next?**
-> **A:** "Phase 2 (6 months): Multi-language support for Hindi, Tamil, Bengali to reach 500M+ users. Offline-first capability for areas with poor connectivity. Phase 3 (12 months): Predictive analytics to identify issue hotspots before problems occur. Integration with IoT sensors for automatic issue detection. Phase 4 (18 months): API platform for third-party integrations, advanced dashboard analytics for municipal planning."
-
-**Q: What are current limitations and how will you solve them?**
-> **A:** "Three main limitations: First, dependency on municipal cooperation - we're building relationships and demonstrating ROI to overcome resistance. Second, AI accuracy for complex issues - we're continuously training models with local data and adding human verification loops. Third, user adoption in smaller cities - we're developing lightweight versions and local language support. We see these as growth opportunities, not fundamental flaws."
-
-### Technical Challenge Questions
-
-**Q: How do you handle data privacy and security?**
-> **A:** "Multi-layered approach: End-to-end encryption for sensitive data, Row Level Security in database, OAuth 2.0 authentication, and GDPR-compliant data handling. Personal information is anonymized in public views, location data is approximate (100m radius), and users control their data visibility. We conduct regular security audits and follow OWASP guidelines. Government partnerships require additional compliance which we're prepared for."
-
-**Q: What happens if your AI makes mistakes?**
-> **A:** "Human-in-the-loop system: AI provides suggestions with confidence scores, users can override categorization, and municipal officers verify before action. We track AI accuracy (currently 85% for issue categorization) and continuously improve with feedback loops. For critical issues (safety hazards), we have manual review processes. Mistakes are learning opportunities - we retrain models with corrected data."
-
-**Q: How do you ensure issue resolution, not just reporting?**
-> **A:** "Accountability mechanisms: Public dashboards showing resolution rates by area and category, automated escalation for overdue issues, citizen feedback on resolution quality, and performance metrics for municipal officers. We gamify the process - officers get recognition for high resolution rates, citizens earn points for quality reports. The key is making the entire process transparent and measurable."
-
-### Rapid-Fire Defense Responses
-
-**Q: Why not just use existing government portals?**
-> **A:** "They're designed for bureaucrats, not citizens. 15-step forms vs our 3-tap reporting. No transparency, no community engagement, no AI assistance."
-
-**Q: How do you handle fake reports?**
-> **A:** "Photo verification, location validation, community moderation, and user reputation scores. Fake reports are flagged and users face consequences."
-
-**Q: What if governments don't adopt your platform?**
-> **A:** "We start citizen-first. Demonstrated community pressure and media attention motivate government adoption. We have backup B2C monetization strategies."
-
-**Q: Can this work in rural areas?**
-> **A:** "Absolutely. Rural areas have different civic issues but same transparency needs. We're designing lightweight versions for low-bandwidth areas."
-
-### Confidence Boosters - When You Don't Know
-
-**"That's a great question. We haven't implemented that specific feature yet, but here's how I'd approach it..."**
-
-**"Based on our current architecture, here's what I think would work best..."**
-
-**"We've identified that as a future challenge. Our preliminary research suggests..."**
-
-**"That's exactly the kind of feedback we're looking for. Can you help us think through the implications?"**
 
 ### Key Numbers to Remember
 - **70%** of civic complaints never get resolved (problem scale)
