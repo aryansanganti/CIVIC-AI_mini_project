@@ -230,7 +230,7 @@ export async function analyzeCivicIssue(
 
     throw new Error('Invalid response format');
   } catch (error: any) {
-    console.error('Error analyzing image:', error);
+    console.log('Error analyzing image:', error);
 
     // Provide user-friendly error messages based on error type
     let errorMessage = 'Unable to analyze image - please try again';
