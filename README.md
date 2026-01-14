@@ -1,7 +1,7 @@
 # Civic AI - Mobile Civic Issue Reporting Platform
-<div align="center">
+<!-- <div align="center">
 <img width="45%" src="https://github.com/aryansanganti/CIVIC-AI_mini_project/blob/main/assets/images/GrpPhoto.jpeg" alt="header-img" />
-</div>
+</div> -->
 
 A mobile-first platform that empowers citizens to report local civic issues using AI-powered detection, Supabase backend, and real-time issue management.
 
