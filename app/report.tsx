@@ -1,5 +1,6 @@
 import { useTheme } from '@/contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { File } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -40,6 +41,7 @@ export default function ReportScreen() {
   } | null>(null);
   const [aiConfidence, setAiConfidence] = useState<number | null>(null);
   const [isAnonymous, setIsAnonymous] = useState(false);
+  const [isPriorityLocked, setIsPriorityLocked] = useState(false);
 
   useEffect(() => {
     getCurrentLocation();
@@ -95,12 +97,13 @@ export default function ReportScreen() {
         mediaTypes: 'images',
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.8,
+        quality: 0.5,
       });
 
       if (!result.canceled && result.assets[0]) {
         const newImages = [...images, result.assets[0].uri];
         setImages(newImages);
+        setIsPriorityLocked(false);
 
         // Show loading immediately when image is selected
         if (newImages.length === 1) {
@@ -124,12 +127,13 @@ export default function ReportScreen() {
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.8,
+        quality: 0.5,
       });
 
       if (!result.canceled && result.assets[0]) {
         const newImages = [...images, result.assets[0].uri];
         setImages(newImages);
+        setIsPriorityLocked(false);
 
         // Show loading immediately when photo is taken
         if (newImages.length === 1) {
@@ -179,6 +183,7 @@ export default function ReportScreen() {
         setPriority(urgencyToPriority[analysis.urgency]);
         setTitle(`Issue: ${mappedCategory}`);
         setAiConfidence(analysis.confidence);
+        setIsPriorityLocked(true);
 
         // Show completion message before hiding loader
         setLoadingMessage('AI analysis complete! Processing results...');
@@ -244,6 +249,7 @@ export default function ReportScreen() {
       };
       setPriority(urgencyToPriority[analysis.urgency]);
       setTitle(`Issue: ${mappedCategory}`);
+      setIsPriorityLocked(true);
 
       // Show completion message before hiding loader
       setLoadingMessage('✅ AI analysis complete! Processing results...');
@@ -274,10 +280,15 @@ export default function ReportScreen() {
     setImages(newImages);
     if (newImages.length === 0) {
       setAiConfidence(null);
+      setIsPriorityLocked(false);
     }
   };
 
   const handleSubmit = async () => {
+    // Spam Prevention Constants
+    const ANONYMOUS_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+    const MIN_ANONYMOUS_CONFIDENCE = 50; // 50% confidence required
+
     if (!title.trim() || !description.trim()) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
@@ -287,6 +298,41 @@ export default function ReportScreen() {
       Alert.alert('Error', 'Location is required');
       return;
     }
+
+    // --- SPAM CHECKS START ---
+    if (isAnonymous) {
+      // 1. Quality Check: AI Confidence
+      if (aiConfidence === null || aiConfidence < MIN_ANONYMOUS_CONFIDENCE) {
+        Alert.alert(
+          'Verification Required',
+          `Anonymous reports require high AI confidence (>${MIN_ANONYMOUS_CONFIDENCE}%) to ensure validity. Please add a clearer photo or log in to submit.`
+        );
+        return;
+      }
+
+      // 2. Rate Limiting: Check last submission time
+      try {
+        const lastReportTimeStr = await AsyncStorage.getItem('lastAnonymousReportTime');
+        if (lastReportTimeStr) {
+          const lastReportTime = parseInt(lastReportTimeStr, 10);
+          const timeSinceLastReport = Date.now() - lastReportTime;
+
+          if (timeSinceLastReport < ANONYMOUS_COOLDOWN_MS) {
+            const minutesLeft = Math.ceil((ANONYMOUS_COOLDOWN_MS - timeSinceLastReport) / 60000);
+            Alert.alert(
+              'Slow Down',
+              `To prevent spam, please wait ${minutesLeft} minute(s) before submitting another anonymous report.`
+            );
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('Error checking spam cooldown:', error);
+        // Fail open or closed? Let's merely log it and proceed for now, or block if strict.
+        // We'll proceed to avoid blocking users due to storage errors.
+      }
+    }
+    // --- SPAM CHECKS END ---
 
     setIsLoading(true);
     try {
@@ -329,6 +375,13 @@ export default function ReportScreen() {
       if (isAnonymous) {
         // Submit anonymously
         createdIssue = await SupabaseService.createAnonymousIssue(issueData);
+
+        // Save timestamp for rate limiting
+        if (createdIssue) {
+          AsyncStorage.setItem('lastAnonymousReportTime', Date.now().toString()).catch(err =>
+            console.error('Failed to save report timestamp:', err)
+          );
+        }
       } else {
         // Get current user for authenticated submission
         const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -364,7 +417,8 @@ export default function ReportScreen() {
         setAiConfidence(null);
         setIsAnonymous(false);
       } else {
-        throw new Error('Failed to create issue');
+        // Check manually if it might have failed due to RLS or other things that return null but no error thrown
+        throw new Error('Failed to create issue (returned null)');
       }
     } catch (error) {
       console.error('Error submitting issue:', error);
@@ -631,7 +685,7 @@ export default function ReportScreen() {
               color: isDark ? '#ffffff' : '#111827',
               marginBottom: 8
             }}>
-              Title 
+              Title
             </Text>
             <TextInput
               value={title}
@@ -658,7 +712,7 @@ export default function ReportScreen() {
               color: isDark ? '#ffffff' : '#111827',
               marginBottom: 8
             }}>
-              Description 
+              Description
             </Text>
             <TextInput
               value={description}
@@ -748,6 +802,7 @@ export default function ReportScreen() {
                 <TouchableOpacity
                   key={level}
                   onPress={() => setPriority(level)}
+                  disabled={isPriorityLocked}
                   style={{
                     flex: 1,
                     backgroundColor: priority === level ? (isDark ? '#3b82f6' : '#3b82f6') : (isDark ? '#1f2937' : '#ffffff'),
@@ -757,6 +812,9 @@ export default function ReportScreen() {
                     alignItems: 'center',
                     borderWidth: 1,
                     borderColor: isDark ? '#374151' : '#e5e7eb',
+                    opacity: isPriorityLocked ? 0.6 : 1,
+                    flexDirection: 'row',
+                    justifyContent: 'center',
                   }}
                 >
                   <Text style={{
@@ -766,6 +824,14 @@ export default function ReportScreen() {
                   }}>
                     {level}
                   </Text>
+                  {isPriorityLocked && priority === level && (
+                    <Ionicons
+                      name="lock-closed"
+                      size={12}
+                      color="#ffffff"
+                      style={{ marginLeft: 6 }}
+                    />
+                  )}
                 </TouchableOpacity>
               ))}
             </View>

@@ -34,29 +34,12 @@ export default function AILoadingModal({
     // Animation values
     const spinValue = useRef(new Animated.Value(0)).current;
     const pulseValue = useRef(new Animated.Value(1)).current;
-    const scaleValue = useRef(new Animated.Value(0.8)).current;
-    const opacityValue = useRef(new Animated.Value(0)).current;
     const dotAnimation1 = useRef(new Animated.Value(0)).current;
     const dotAnimation2 = useRef(new Animated.Value(0)).current;
     const dotAnimation3 = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
         if (visible) {
-            // Main entry animation
-            Animated.parallel([
-                Animated.timing(opacityValue, {
-                    toValue: 1,
-                    duration: 300,
-                    useNativeDriver: true,
-                }),
-                Animated.spring(scaleValue, {
-                    toValue: 1,
-                    friction: 8,
-                    tension: 40,
-                    useNativeDriver: true,
-                }),
-            ]).start();
-
             // Continuous spinning animation
             const spinAnimation = Animated.loop(
                 Animated.timing(spinValue, {
@@ -134,8 +117,6 @@ export default function AILoadingModal({
             // Reset animations when not visible
             spinValue.setValue(0);
             pulseValue.setValue(1);
-            scaleValue.setValue(0.8);
-            opacityValue.setValue(0);
             dotAnimation1.setValue(0);
             dotAnimation2.setValue(0);
             dotAnimation3.setValue(0);
@@ -179,10 +160,6 @@ export default function AILoadingModal({
                         shadowOpacity: 0.25,
                         shadowRadius: 20,
                         elevation: 10,
-                        transform: [
-                            { scale: scaleValue },
-                        ],
-                        opacity: opacityValue,
                     }}
                 >
                     {/* Main AI Brain Icon with Pulse Effect */}

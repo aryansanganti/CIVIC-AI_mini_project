@@ -102,7 +102,7 @@ async function retryWithBackoff<T>(
       return await operation();
     } catch (error: any) {
       lastError = error;
-      console.error(`Attempt ${attempt + 1} failed:`, error?.message || String(error));
+      console.error(`Attempt ${attempt + 1} failed: ${error?.message || String(error)}`);
 
       // Check if this is a retryable error
       const msg = (error?.message || '').toLowerCase();

@@ -1,4 +1,4 @@
-import { File } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system';
 import { CivicIssue, IssueCategory, IssueInsert, IssueStatus, IssueUpdate } from '../types';
 import { supabase } from './supabase';
 
@@ -348,82 +348,70 @@ export class SupabaseService {
     /**
      * Upload an image to Supabase Storage
      */
-    static async uploadImage(imageUri: string, issueId: string, fileName: string): Promise<string | null> {
-        const maxRetries = 3;
-        let lastError: any = null;
-
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            try {
-                console.log(`Uploading image attempt ${attempt}/${maxRetries}:`, fileName);
-
-                // Convert image URI to Blob using new File API (robust across platforms)
-                const file = new File(imageUri);
-                if (!file.exists) {
-                    throw new Error(`Image file not found at URI: ${imageUri}`);
-                }
-
-                // Read file as base64, then convert to Blob via data URL (avoids fetch(file://) issues)
-                const base64 = await file.base64();
-                // Best-effort MIME detection
-                const lower = (imageUri.split('?')[0] || '').toLowerCase();
-                const ext = lower.substring(lower.lastIndexOf('.') + 1);
-                const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'heic' ? 'image/heic' : 'image/jpeg';
-                const dataUrl = `data:${mime};base64,${base64}`;
-                const dataResp = await fetch(dataUrl);
-                const blob = await dataResp.blob();
-                console.log(`Image blob created successfully (via data URL), size: ${blob.size} bytes, type: ${blob.type}`);
-
-                // Create file path
-                const filePath = `${issueId}/${fileName}`;
-
-                // Upload to Supabase Storage with timeout and retry logic
-                const { data, error } = await supabase.storage
-                    .from('issue-images')
-                    .upload(filePath, blob, {
-                        contentType: blob.type || 'image/jpeg',
-                        upsert: false
-                    });
-
-                if (error) {
-                    console.log(`Upload attempt ${attempt} failed:`, error);
-                    lastError = error;
-
-                    // If it's the last attempt, throw the error
-                    if (attempt === maxRetries) {
-                        throw error;
-                    }
-
-                    // Wait before retrying (exponential backoff)
-                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-                    continue;
-                }
-
-                console.log('Image uploaded successfully:', data);
-
-                // Get public URL
-                const { data: urlData } = supabase.storage
-                    .from('issue-images')
-                    .getPublicUrl(filePath);
-
-                console.log('Public URL generated:', urlData.publicUrl);
-                return urlData.publicUrl;
-
-            } catch (error) {
-                console.log(`Upload attempt ${attempt} failed:`, error);
-                lastError = error;
-
-                // If it's the last attempt, break the loop
-                if (attempt === maxRetries) {
-                    break;
-                }
-
-                // Wait before retrying (exponential backoff)
-                await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-            }
+    /**
+     * Helper to convert base64 to ArrayBuffer
+     */
+    private static decodeBase64(base64: string): ArrayBuffer {
+        const binaryString = atob(base64);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
         }
+        return bytes.buffer;
+    }
 
-        console.log('All upload attempts failed:', lastError);
-        return null;
+    /**
+     * Upload an image to Supabase Storage
+     */
+    static async uploadImage(imageUri: string, issueId: string, fileName: string): Promise<string | null> {
+        try {
+            console.log(`Uploading image:`, fileName);
+
+            // Read file as base64 using Expo FileSystem
+            const base64 = await FileSystem.readAsStringAsync(imageUri, {
+                encoding: 'base64',
+            });
+
+            // Convert to ArrayBuffer
+            const arrayBuffer = SupabaseService.decodeBase64(base64);
+
+            // Determine MIME type
+            const lower = (imageUri.split('?')[0] || '').toLowerCase();
+            const ext = lower.substring(lower.lastIndexOf('.') + 1);
+            const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'heic' ? 'image/heic' : 'image/jpeg';
+
+            // Create file path
+            const filePath = `${issueId}/${fileName}`;
+
+            // Upload to Supabase Storage
+            const { data, error } = await supabase.storage
+                .from('issue-images')
+                .upload(filePath, arrayBuffer, {
+                    contentType: mime,
+                    upsert: false
+                });
+
+            if (error) {
+                console.log(`Upload failed:`, error);
+                throw error;
+            }
+
+            console.log('Image uploaded successfully:', data);
+
+            // Get public URL
+            const { data: urlData } = supabase.storage
+                .from('issue-images')
+                .getPublicUrl(filePath);
+
+            console.log('Public URL generated:', urlData.publicUrl);
+            return urlData.publicUrl;
+
+        } catch (error) {
+            console.log(`Upload failed:`, error);
+            // Don't retry blindly, just fail so user isn't stuck waiting
+            return null;
+        }
     }
 
     /**
@@ -454,123 +442,79 @@ export class SupabaseService {
      * Path: {user_id}/{filename}
      */
     static async uploadCommunityImage(imageUri: string, fileName: string): Promise<string | null> {
-        const maxRetries = 3;
-        let lastError: any = null;
+        try {
+            console.log(`Uploading community image:`, fileName);
 
-        // Ensure we have a user id for pathing and RLS
-        const { data: auth } = await supabase.auth.getUser();
-        const userId = auth?.user?.id;
-        if (!userId) {
-            console.log('uploadCommunityImage: No authenticated user');
-            return null;
-        }
+            // Ensure we have a user id for pathing and RLS
+            const { data: auth } = await supabase.auth.getUser();
+            const userId = auth?.user?.id;
+            if (!userId) {
+                console.log('uploadCommunityImage: No authenticated user');
+                return null;
+            }
 
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            try {
-                console.log(`Community image upload attempt ${attempt}/${maxRetries}:`, fileName);
+            // Read file as base64 using Expo FileSystem
+            const base64 = await FileSystem.readAsStringAsync(imageUri, {
+                encoding: 'base64',
+            });
 
-                // Convert image URI to Blob using new File API with timeout
-                const file = new File(imageUri);
-                if (!file.exists) {
-                    throw new Error(`Image file not found at URI: ${imageUri}`);
-                }
+            // Convert to ArrayBuffer
+            const arrayBuffer = SupabaseService.decodeBase64(base64);
 
-                // Read file as base64, then convert to Blob via data URL (avoids fetch(file://) issues)
-                const base64 = await file.base64();
-                const lower = (imageUri.split('?')[0] || '').toLowerCase();
-                const ext = lower.substring(lower.lastIndexOf('.') + 1);
-                const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'heic' ? 'image/heic' : 'image/jpeg';
-                const dataUrl = `data:${mime};base64,${base64}`;
-                
-                // Add timeout to fetch operation
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-                
-                try {
-                    const dataResp = await fetch(dataUrl, { signal: controller.signal });
-                    clearTimeout(timeoutId);
-                    const blob = await dataResp.blob();
-                    console.log(`Community image blob created successfully, size: ${blob.size} bytes, type: ${blob.type}`);
+            // Determine MIME type
+            const lower = (imageUri.split('?')[0] || '').toLowerCase();
+            const ext = lower.substring(lower.lastIndexOf('.') + 1);
+            const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'heic' ? 'image/heic' : 'image/jpeg';
 
-                    // Create file path
-                    const filePath = `${userId}/${fileName}`;
+            // Create file path
+            const filePath = `${userId}/${fileName}`;
 
-                    // Upload to Supabase Storage with timeout handling
-                    const uploadController = new AbortController();
-                    const uploadTimeoutId = setTimeout(() => uploadController.abort(), 60000); // 60 second timeout
+            // Upload to Supabase Storage
+            const { data, error } = await supabase.storage
+                .from('community-images')
+                .upload(filePath, arrayBuffer, {
+                    contentType: mime,
+                    upsert: false,
+                });
 
-                    const { data, error } = await supabase.storage
-                        .from('community-images')
-                        .upload(filePath, blob, {
-                            contentType: blob.type || 'image/jpeg',
+            if (error) {
+                console.log(`Community upload failed:`, error);
+
+                // Fallback attempt
+                if (error.message?.includes('bucket') || error.message?.includes('not found')) {
+                    console.log('Attempting fallback to issue-images bucket...');
+                    const fallbackPath = `community/${userId}/${fileName}`;
+                    const { data: fallbackData } = await supabase.storage
+                        .from('issue-images')
+                        .upload(fallbackPath, arrayBuffer, {
+                            contentType: mime,
                             upsert: false,
                         });
 
-                    clearTimeout(uploadTimeoutId);
-
-                    if (error) {
-                        console.log(`Community image upload attempt ${attempt} failed:`, error);
-                        lastError = error;
-                        
-                        // Check if it's a bucket or permission error
-                        if (error.message?.includes('bucket') || error.message?.includes('not found')) {
-                            console.log('Storage bucket "community-images" may not exist or have incorrect policies');
-                            // Try fallback to issue-images bucket
-                            console.log('Attempting fallback to issue-images bucket...');
-                            const fallbackPath = `community/${userId}/${fileName}`;
-                            const { data: fallbackData, error: fallbackError } = await supabase.storage
-                                .from('issue-images')
-                                .upload(fallbackPath, blob, {
-                                    contentType: blob.type || 'image/jpeg',
-                                    upsert: false,
-                                });
-
-                            if (!fallbackError && fallbackData) {
-                                console.log('Fallback upload successful:', fallbackData);
-                                const { data: urlData } = supabase.storage
-                                    .from('issue-images')
-                                    .getPublicUrl(fallbackPath);
-                                return urlData.publicUrl;
-                            }
-                        }
-
-                        if (attempt === maxRetries) throw error;
-                        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-                        continue;
+                    if (fallbackData) {
+                        const { data: urlData } = supabase.storage
+                            .from('issue-images')
+                            .getPublicUrl(fallbackPath);
+                        return urlData.publicUrl;
                     }
-
-                    console.log('Community image uploaded successfully:', data);
-
-                    // Get public URL
-                    const { data: urlData } = supabase.storage
-                        .from('community-images')
-                        .getPublicUrl(filePath);
-
-                    console.log('Community image public URL generated:', urlData.publicUrl);
-                    return urlData.publicUrl;
-
-                } catch (fetchError: any) {
-                    clearTimeout(timeoutId);
-                    if (fetchError.name === 'AbortError') {
-                        throw new Error('Network request timed out');
-                    }
-                    throw fetchError;
                 }
-
-            } catch (error) {
-                console.log(`Community image upload attempt ${attempt} failed:`, error);
-                lastError = error;
-                
-                if (attempt === maxRetries) break;
-                
-                // Progressive backoff with jitter
-                const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
-                await new Promise(resolve => setTimeout(resolve, delay));
+                throw error;
             }
-        }
 
-        console.log('All community image upload attempts failed:', lastError);
-        return null;
+            console.log('Community image uploaded successfully:', data);
+
+            // Get public URL
+            const { data: urlData } = supabase.storage
+                .from('community-images')
+                .getPublicUrl(filePath);
+
+            console.log('Community image public URL generated:', urlData.publicUrl);
+            return urlData.publicUrl;
+
+        } catch (error) {
+            console.log(`Community upload failed:`, error);
+            return null;
+        }
     }
 
     /**
